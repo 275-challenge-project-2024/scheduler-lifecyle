@@ -28,8 +28,9 @@ public:
         return instance;
     }
 
-    ~SharedMemoryHeap();
+    // ~SharedMemoryHeap();
     void pushToSharedMemory(std::string taskID, int priority);
+    void print();
 };
 
 #endif // SHARED_MEMORY_HEAP_H

@@ -417,5 +417,6 @@ int main()
 
     int test;
     std::cin >> test;
+    SharedMemoryHeap::getInstance().print();
     return 0;
 }

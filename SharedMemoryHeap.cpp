@@ -33,19 +33,19 @@ SharedMemoryHeap::SharedMemoryHeap()
     }
 }
 
-SharedMemoryHeap::~SharedMemoryHeap()
-{
-    if (shmdt(shm_data) == -1)
-    {
-        perror("shmdt failed");
-        exit(1);
-    }
-    if (shmctl(shm_id, IPC_RMID, NULL) == -1)
-    {
-        perror("shmctl(IPC_RMID) failed");
-        exit(1);
-    }
-}
+// SharedMemoryHeap::~SharedMemoryHeap()
+// {
+//     if (shmdt(shm_data) == -1)
+//     {
+//         perror("shmdt failed");
+//         exit(1);
+//     }
+//     if (shmctl(shm_id, IPC_RMID, NULL) == -1)
+//     {
+//         perror("shmctl(IPC_RMID) failed");
+//         exit(1);
+//     }
+// }
 
 void SharedMemoryHeap::pushToSharedMemory(std::string taskID, int priority)
 {
@@ -58,4 +58,12 @@ void SharedMemoryHeap::pushToSharedMemory(std::string taskID, int priority)
 
     // Assume heap_push is defined to take parameters for shm_data, taskID, timestamp, and priority
     heap_push(shm_data, taskID.c_str(), timestamp_str.c_str(), priority);
+}
+
+void SharedMemoryHeap::print()
+{
+    for (size_t i = 0; i < shm_data->size; i++)
+    {
+        printf("Task ID: %s, Timestamp: %s, Priority: %d\n", shm_data->data[i].taskId, shm_data->data[i].timestamp, shm_data->data[i].priority);
+    }
 }
