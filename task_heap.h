@@ -20,6 +20,7 @@ struct HeapData
 {
     struct HeapElement data[MAX_TASKS];
     size_t size;
+    pthread_mutex_t mutex;
 };
 
 // Function prototypes
