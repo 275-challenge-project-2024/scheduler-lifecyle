@@ -1,29 +1,10 @@
 #include "PLM.h"
+#include "Scheduler.h"
 #include "Logger.h"
-#include <iostream>
-#include <random>
-
-// Fake worker IDs
-std::vector<std::string> workerIds = {"Worker1", "Worker2", "Worker3"};
 
 PLM::PLM()
 {
-    // Periodically check the status of the task
-    std::thread([this]()
-                {
-                    while (true) {
-                        std::this_thread::sleep_for(std::chrono::milliseconds(10000));
-                        std::lock_guard<std::mutex> lock(storageMutex);
-                        std::cout << "Checking the status of the task\n"; 
-                        for (auto& pair : storage) {
-                            Task& task = pair.second;
-                            if (task.taskStatus != "COMPLETED" && task.taskStatus != "REASSIGNING") {
-                                std::cout << "Reassigning task " << task.taskID << "\n";
-                                handleTaskError(task);
-                            }
-                        }
-                    } })
-        .detach();
+    // The constructor is private, used only for the singleton instance
 }
 
 PLM &PLM::getInstance()
@@ -32,71 +13,41 @@ PLM &PLM::getInstance()
     return instance;
 }
 
-void PLM::pushToSharedMemory(Task task)
-{
-    std::lock_guard<std::mutex> lock(storageMutex);
-    std::string workerId = workerIds[std::rand() % workerIds.size()];
-    task.workerID = workerId;
-    storage[task.taskID] = task;
-}
-
-void PLM::createTask(std::string taskID, std::string clientID, int priority, std::string command, int errorCode)
+void PLM::createTask(const std::string &taskID, const std::string &clientID, int priority, const std::string &command, const std::string &errorCode)
 {
     Task newTask(taskID, clientID, priority, command, errorCode);
-
-    {
-        std::lock_guard<std::mutex> lock(storageMutex);
-        storage[newTask.taskID] = newTask;
-    }
-
+    storage[newTask.taskID] = newTask;
     pushToSharedMemory(newTask);
 }
 
-void PLM::assignWorker(std::string taskID, std::string workerID)
+void PLM::pushToSharedMemory(Task &task)
 {
-    std::lock_guard<std::mutex> lock(storageMutex);
+    task.workerID = Scheduler::getWorkerId(task);
+    task.taskStatus = "ASSIGNED";
+    storage[task.taskID] = task;
+    sendTask(task);
+}
 
-    auto it = storage.find(taskID);
-    if (it != storage.end())
+void PLM::assignWorker(const std::string &taskID, const std::string &workerID)
+{
+    if (storage.find(taskID) != storage.end())
     {
-        Task &task = it->second;
+        Task &task = storage[taskID];
         task.workerID = workerID;
         task.taskStatus = "ASSIGNED";
-        storage[task.taskID] = task;
-
         sendTask(task);
     }
-    else
+}
+
+void PLM::updateBasedOnHeartBeats(const std::vector<HeartBeat> &heartbeats)
+{
+    for (const HeartBeat &hb : heartbeats)
     {
-        std::cerr << "Task " << taskID << " not found in storage." << std::endl;
-    }
-}
-
-Stub PLM::getRelatedStub(std::string workerID)
-{
-    return Stub();
-}
-
-void PLM::sendTask(Task task)
-{
-    Stub stub = getRelatedStub(task.workerID);
-    stub.sendTask(task);
-}
-
-void PLM::updateBasedOnHeartBeats(std::vector<HeartBeat> heartbeats)
-{
-    std::lock_guard<std::mutex> lock(storageMutex);
-
-    for (HeartBeat hb : heartbeats)
-    {
-        auto it = storage.find(hb.taskID);
-        if (it != storage.end())
+        if (storage.find(hb.taskID) != storage.end())
         {
-            Task &task = it->second;
+            Task &task = storage[hb.taskID];
             task.taskStatus = hb.status;
-            task.errorCode = hb.errorCode ? hb.errorCode : 0;
-            storage[hb.taskID] = task;
-
+            task.errorCode = hb.errorCode;
             if (hb.errorCode != 0)
             {
                 handleTaskError(task);
@@ -110,32 +61,41 @@ void PLM::updateBasedOnHeartBeats(std::vector<HeartBeat> heartbeats)
     }
 }
 
-void PLM::updateTaskStatusToCompleted(Task task)
+void PLM::workerFailed(const std::string &workerId)
 {
-    Stub stub = getRelatedStub(task.clientID);
-    stub.sendTaskCompleted(task);
-}
-
-void PLM::workerFailed(std::string workerId)
-{
-    Logger::error("Worker with workerId : " + workerId + " failed");
-    for (auto it = storage.begin(); it != storage.end(); ++it)
+    Logger::error("Worker with workerId: " + workerId + " failed");
+    for (auto &it : storage)
     {
-        if (it->second.workerID == workerId)
+        if (it.second.workerID == workerId && it.second.taskStatus != "COMPLETED")
         {
-            if (it->second.taskStatus != "COMPLETED")
-                handleTaskError(it->second);
+            handleTaskError(it.second);
         }
     }
 }
 
-void PLM::handleTaskError(Task task)
+void PLM::handleTaskError(Task &task)
 {
-    Logger::error("Task with taskID : " + task.taskID + " failed with errorCode : " + std::to_string(task.errorCode));
+    Logger::error("Task with taskID: " + task.taskID + " failed with errorCode: " + std::to_string(task.errorCode));
     task.workerID = "";
     task.taskStatus = "REASSIGNING";
-    task.priority += 1;
-    storage[task.taskID] = task;
-
+    task.priority++;
     pushToSharedMemory(task);
+}
+
+Stub PLM::getRelatedStub(const std::string &workerID)
+{
+    // Implementation for getting stub based on workerID. This could depend on network or other parameters.
+    return Stub();
+}
+
+void PLM::sendTask(Task &task)
+{
+    Stub stub = getRelatedStub(task.workerID);
+    stub.sendTask(task);
+}
+
+void PLM::updateTaskStatusToCompleted(Task &task)
+{
+    Stub stub = getRelatedStub(task.clientID);
+    stub.sendTaskCompleted(task);
 }

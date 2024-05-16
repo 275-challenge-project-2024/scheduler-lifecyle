@@ -15,7 +15,6 @@
 int main()
 {
     key_t SHM_KEY;
-
     // Generate a unique key from a pathname and a project identifier
     SHM_KEY = ftok(PATHNAME, PROJ_ID);
     if (SHM_KEY == -1)

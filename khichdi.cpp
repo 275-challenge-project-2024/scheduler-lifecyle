@@ -6,6 +6,20 @@
 #include <chrono>
 #include <thread>
 #include <functional>
+#include "task_heap.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <stdint.h>
+#include <sys/ipc.h>
+#include <sys/shm.h>
+#include <sys/types.h>
+#include <unistd.h>
+#include <iostream>
+#include "SharedMemoryHeap.h"
+
+#define PATHNAME "/tmp" // Make sure this directory exists and is accessible
+#define PROJ_ID 123     // An arbitrary number, used to generate a key
 
 // TODO : Remove the capacity from everywhere
 
@@ -148,6 +162,61 @@ public:
     int errorCode;
 };
 
+// class SharedMemoryHeap
+// {
+// public:
+//     key_t SHM_KEY;
+//     int shm_id;
+//     HeapData *shm_data;
+//     SharedMemoryHeap()
+//     {
+//         // Generate a unique key from a pathname and a project identifier
+//         SHM_KEY = ftok(PATHNAME, PROJ_ID);
+//         if (SHM_KEY == -1)
+//         {
+//             perror("ftok failed");
+//             exit(1);
+//         }
+//         shm_id = shmget(SHM_KEY, sizeof(HeapData), IPC_CREAT | 0666);
+//         if (shm_id == -1)
+//         {
+//             perror("shmget failed");
+//             exit(1);
+//         }
+//         shm_data = (HeapData *)shmat(shm_id, NULL, 0);
+//         if (shm_data == (HeapData *)-1)
+//         {
+//             perror("shmat failed");
+//             exit(1);
+//         }
+//     }
+//     ~SharedMemoryHeap()
+//     {
+//         if (shmdt(shm_data) == -1)
+//         {
+//             perror("shmdt failed");
+//             exit(1);
+//         }
+//         if (shmctl(shm_id, IPC_RMID, NULL) == -1)
+//         {
+//             perror("shmctl(IPC_RMID) failed");
+//             exit(1);
+//         }
+//     }
+//     void pushToSharedMemory(Task task)
+//     {
+
+//         auto now = std::chrono::system_clock::now();
+//         auto duration = now.time_since_epoch();
+//         auto timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(duration).count();
+
+//         // convert timestamp to string
+//         std::string timestamp_str = std::to_string(timestamp);
+
+//         heap_push(shm_data, task.taskID.c_str(), timestamp_str.c_str(), task.priority);
+//     }
+// };
+
 class PLM
 {
 private:
@@ -156,6 +225,25 @@ private:
     // Private constructor to prevent instantiation
     PLM()
     {
+        key_t SHM_KEY;
+        // Generate a unique key from a pathname and a project identifier
+        SHM_KEY = ftok(PATHNAME, PROJ_ID);
+        if (SHM_KEY == -1)
+        {
+            perror("ftok failed");
+            exit(1);
+        }
+        std::cout << "HERE" << std::endl;
+        int shm_id = shmget(SHM_KEY, sizeof(HeapData), IPC_CREAT | 0666);
+        if (shm_id >= 0)
+        {
+            // If shared memory segment exists, delete it
+            if (shmctl(shm_id, IPC_RMID, NULL) == -1)
+            {
+                perror("shmctl(IPC_RMID) failed");
+                exit(1);
+            }
+        }
         // create one function that periodically checks the status of the task
         // if the task is not completed then reassign the task to the worker
         // setInterval([]()
@@ -180,8 +268,8 @@ public:
         // std::string workerId = Scheduler::getWorkerId(task);
         // task.workerID = workerId;
         // storage[task.taskID] = task;
-
-        assignWorker(task.taskID, Scheduler::getWorkerId(task));
+        SharedMemoryHeap &shmHeap = SharedMemoryHeap::getInstance();
+        shmHeap.pushToSharedMemory(task.taskID, task.priority);
     }
 
     void createTask(std::string taskID, std::string clientID, int priority, int capacity, std::string command, std::string errorCode)
@@ -300,6 +388,8 @@ int main()
 
     // FAKE IMPLEMENTATION
     PLM &plm = PLM::getInstance();
+    SharedMemoryHeap::getInstance();
+
     PLM::getInstance().createTask("task1", "client1", 1, 1, "command1", "0");
     PLM::getInstance().createTask("task2", "client2", 2, 1, "command2", "0");
     PLM::getInstance().createTask("task3", "client3", 3, 1, "command3", "0");
@@ -320,7 +410,7 @@ int main()
                  }); },
                5000);
     setTimeout([]()
-               { 
+               {
                 for(auto workerID: workerIds)
                     PLM::getInstance().workerFailed(workerID); },
                8000);

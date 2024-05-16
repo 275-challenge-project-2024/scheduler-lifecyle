@@ -1,4 +1,13 @@
 #include "Task.h"
+#include <random>
+
+Task::Task() : priority(0), errorCode(0) {}
+
+Task::Task(const std::string &taskID, const std::string &clientID, int priority, const std::string &command, const std::string &errorCode)
+    : taskID(taskID), clientID(clientID), priority(priority), command(command), errorCode(std::stoi(errorCode))
+{
+    taskStatus = "Initiated";
+}
 
 std::string Task::generateId()
 {
@@ -12,16 +21,5 @@ std::string Task::generateId()
     {
         id += alphanumeric[dis(gen)];
     }
-
     return id;
-}
-
-Task::Task()
-    : taskID(""), taskStatus(""), workerID(""), clientID(""), priority(0), command(""), errorCode(0)
-{
-}
-
-Task::Task(std::string taskID, std::string clientID, int priority, std::string command, int errorCode)
-    : taskID(taskID), taskStatus("Initiated"), workerID(""), clientID(clientID), priority(priority), command(command), errorCode(errorCode)
-{
 }

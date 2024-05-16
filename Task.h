@@ -2,7 +2,6 @@
 #define TASK_H
 
 #include <string>
-#include <random>
 
 class Task
 {
@@ -15,10 +14,9 @@ public:
     std::string command;
     int errorCode;
 
-    static std::string generateId();
-
     Task();
-    Task(std::string taskID, std::string clientID, int priority, std::string command, int errorCode);
+    Task(const std::string &taskID, const std::string &clientID, int priority, const std::string &command, const std::string &errorCode);
+    static std::string generateId();
 };
 
 #endif // TASK_H
