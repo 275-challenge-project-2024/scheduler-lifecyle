@@ -6,12 +6,22 @@
 #include <sys/shm.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <pthread.h>
 
 // Initialize the heap structure
 struct HeapData *initialize_heap(void *shm_addr)
 {
     struct HeapData *heap = (struct HeapData *)shm_addr;
+    pthread_mutexattr_t attr;
+
+    pthread_mutexattr_init(&attr);
+    pthread_mutexattr_setpshared(&attr, PTHREAD_PROCESS_SHARED);
+
     heap->size = 0;
+    pthread_mutex_init(&heap->mutex, &attr); // Initialize the mutex with the attribute
+
+    pthread_mutexattr_destroy(&attr); // Clean up attribute
+
     return heap;
 }
 
@@ -26,11 +36,13 @@ void swap(struct HeapElement *a, struct HeapElement *b)
 // Reorder the heap from the index upwards
 void heapify_up(struct HeapData *heap, size_t index)
 {
+    pthread_mutex_lock(&heap->mutex); // Lock the mutex
     while (index != 0 && heap->data[(index - 1) / 2].priority < heap->data[index].priority)
     {
         swap(&heap->data[index], &heap->data[(index - 1) / 2]);
         index = (index - 1) / 2;
     }
+    pthread_mutex_unlock(&heap->mutex); // Unlock the mutex
 }
 
 // Reorder the heap from the index downwards
@@ -40,6 +52,7 @@ void heapify_down(struct HeapData *heap, size_t index)
     size_t left = 2 * index + 1;
     size_t right = 2 * index + 2;
 
+    pthread_mutex_lock(&heap->mutex); // Lock the mutex
     if (left < heap->size && heap->data[left].priority > heap->data[largest].priority)
     {
         largest = left;
@@ -53,6 +66,7 @@ void heapify_down(struct HeapData *heap, size_t index)
         swap(&heap->data[index], &heap->data[largest]);
         heapify_down(heap, largest);
     }
+    pthread_mutex_unlock(&heap->mutex); // Unlock the mutex
 }
 
 // Add an element to the heap
@@ -96,23 +110,28 @@ struct HeapElement heap_pop(struct HeapData *heap)
 // Find the index of an element by task ID
 ssize_t find_index_by_id(struct HeapData *heap, const char *taskId)
 {
+    pthread_mutex_lock(&heap->mutex); // Lock the mutex
     for (size_t i = 0; i < heap->size; ++i)
     {
         if (strncmp(heap->data[i].taskId, taskId, sizeof(heap->data[i].taskId)) == 0)
         {
+            pthread_mutex_unlock(&heap->mutex); // Unlock the mutex
             return i;
         }
     }
+    pthread_mutex_unlock(&heap->mutex); // Unlock the mutex
     return -1;
 }
 
 // Remove a specific element from the heap
 bool remove_node_by_id(struct HeapData *heap, const char *taskId)
 {
+    pthread_mutex_lock(&heap->mutex); // Lock the mutex
     ssize_t index = find_index_by_id(heap, taskId);
     if (index == -1)
     {
         fprintf(stderr, "Worker ID not found\n");
+        pthread_mutex_unlock(&heap->mutex); // Unlock the mutex
         return false;
     }
 
@@ -125,5 +144,6 @@ bool remove_node_by_id(struct HeapData *heap, const char *taskId)
         heapify_up(heap, index);
     }
 
+    pthread_mutex_unlock(&heap->mutex); // Unlock the mutex
     return true;
 }
